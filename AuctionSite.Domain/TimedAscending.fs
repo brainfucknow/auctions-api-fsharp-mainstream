@@ -40,15 +40,20 @@ module TimedAscending =
         
     /// Parse TimedAscendingOptions from string
     let tryParseOptions (s: string) =
+        let parseTimeFrame (secondsStr: string) =
+            match Int32.TryParse secondsStr with
+            | true, seconds -> Some(TimeSpan.FromSeconds(float seconds))
+            | _ -> None
+            
         let parts = s.Split('|')
         if parts.Length = 4 && parts[0] = "English" then
-            match tryParseAmount parts[1], tryParseAmount parts[2], Int32.TryParse parts[3] with
-            | Some reservePrice, Some minRaise, (true, seconds) ->
+            match tryParseAmount parts[1], tryParseAmount parts[2], parseTimeFrame parts[3] with
+            | Some reservePrice, Some minRaise, Some timeFrame ->
                 if reservePrice.Currency = minRaise.Currency then
                     Some {
                         ReservePrice = reservePrice
                         MinRaise = minRaise
-                        TimeFrame = TimeSpan.FromSeconds(float seconds)
+                        TimeFrame = timeFrame
                     }
                 else None
             | _ -> None
@@ -63,6 +68,9 @@ module TimedAscending =
     let rec stateHandler =
         { new IState<TimedAscendingState> with
             member _.Inc (now: DateTime) (state: TimedAscendingState) =
+                let transitionToEnded bids expiry opt =
+                    HasEnded(bids, expiry, opt)
+                    
                 match state with
                 | AwaitingStart(start, startingExpiry, opt) ->
                     if now > start then
@@ -71,7 +79,7 @@ module TimedAscending =
                             OnGoing([], startingExpiry, opt)
                         else
                             // Transition directly from AwaitingStart to HasEnded
-                            HasEnded([], startingExpiry, opt)
+                            transitionToEnded [] startingExpiry opt
                     else
                         // Stay in AwaitingStart
                         state
@@ -81,7 +89,7 @@ module TimedAscending =
                         state
                     else
                         // Transition from OnGoing to HasEnded
-                        HasEnded(bids, nextExpiry, opt)
+                        transitionToEnded bids nextExpiry opt
                 | HasEnded _ ->
                     // Stay in HasEnded
                     state
@@ -98,18 +106,21 @@ module TimedAscending =
                 | AwaitingStart _ ->
                     nextState, Error(AuctionHasNotStarted auctionId)
                 | OnGoing(bids, nextExpiry, opt) ->
+                    let extendExpiry () = max nextExpiry (now.Add(opt.TimeFrame))
+                    
                     match bids with
                     | [] ->
                         // First bid - extend expiry if needed
-                        let nextExpiry' = max nextExpiry (now.Add(opt.TimeFrame))
+                        let nextExpiry' = extendExpiry()
                         OnGoing(bid :: bids, nextExpiry', opt), Ok()
                     | highestBid :: _ ->
                         // Check if bid is high enough
                         let highestBidAmount = highestBid.BidAmount
-                        let nextExpiry' = max nextExpiry (now.Add(opt.TimeFrame))
+                        let nextExpiry' = extendExpiry()
                         let minRaiseAmount = opt.MinRaise
+                        let minimumBid = add highestBidAmount minRaiseAmount
                         
-                        if isGreaterThan bidAmount (add highestBidAmount minRaiseAmount) then
+                        if isGreaterThan bidAmount minimumBid then
                             // Bid is high enough
                             OnGoing(bid :: bids, nextExpiry', opt), Ok()
                         else
@@ -125,12 +136,14 @@ module TimedAscending =
                 | AwaitingStart _ -> []
                     
             member _.TryGetAmountAndWinner (state: TimedAscendingState) =
-                match state with
-                | HasEnded(bid :: _, _, opt) ->
-                    if isGreaterThan bid.BidAmount opt.ReservePrice then
+                let getWinnerFromBids bids opt =
+                    match bids with
+                    | bid :: _ when isGreaterThan bid.BidAmount opt.ReservePrice ->
                         Some(bid.BidAmount, bid.Bidder.UserId)
-                    else
-                        None
+                    | _ -> None
+                
+                match state with
+                | HasEnded(bids, _, opt) -> getWinnerFromBids bids opt
                 | _ -> None
                         
             member _.HasEnded (state: TimedAscendingState) =

@@ -38,16 +38,19 @@ module SingleSealedBid =
     let rec stateHandler =
         { new IState<SingleSealedBidState> with
             member _.Inc (now: DateTime) (state: SingleSealedBidState) =
+                let transitionToEnded bids expiry opt =
+                    // Sort bids by amount in descending order
+                    let sortedBids = 
+                        bids 
+                        |> Map.toList 
+                        |> List.map snd 
+                        |> Bid.sortByAmountDescending
+                    DisclosingBids(sortedBids, expiry, opt)
+                    
                 match state with
                 | AcceptingBids(bids, expiry, opt) ->
                     if now >= expiry then
-                        // Sort bids by amount in descending order
-                        let sortedBids = 
-                            bids 
-                            |> Map.toList 
-                            |> List.map snd 
-                            |> List.sortByDescending _.BidAmount.Value
-                        DisclosingBids(sortedBids, expiry, opt)
+                        transitionToEnded bids expiry opt
                     else
                         state
                 | DisclosingBids _ -> 
@@ -61,13 +64,16 @@ module SingleSealedBid =
                 // Advance state to current time
                 let nextState = stateHandler.Inc now state
                 
-                match nextState with
-                | AcceptingBids(bids, expiry, opt) ->
+                let validateAndAddBid bids expiry opt =
                     if bids.ContainsKey user then
                         nextState, Error AlreadyPlacedBid
                     else
                         let updatedBids = bids.Add(user, bid)
                         AcceptingBids(updatedBids, expiry, opt), Ok()
+                
+                match nextState with
+                | AcceptingBids(bids, expiry, opt) ->
+                    validateAndAddBid bids expiry opt
                 | DisclosingBids _ ->
                     nextState, Error(AuctionHasEnded auctionId)
                     
@@ -79,23 +85,22 @@ module SingleSealedBid =
                     bids
                     
             member _.TryGetAmountAndWinner (state: SingleSealedBidState) =
+                let getWinnerForBids bids options =
+                    match bids, options with
+                    | [], _ -> 
+                        None
+                    | highestBid :: secondHighest :: _, Vickrey ->
+                        Some(secondHighest.BidAmount, highestBid.Bidder.UserId)
+                    | [highestBid], _ ->
+                        Some(highestBid.BidAmount, highestBid.Bidder.UserId)
+                    | highestBid :: _, Blind ->
+                        Some(highestBid.BidAmount, highestBid.Bidder.UserId)
+                
                 match state with
                 | AcceptingBids _ -> 
                     None
-                | DisclosingBids(bids, _, Vickrey) ->
-                    match bids with
-                    | highestBid :: secondHighest :: _ ->
-                        Some(secondHighest.BidAmount, highestBid.Bidder.UserId)
-                    | [highestBid] ->
-                        Some(highestBid.BidAmount, highestBid.Bidder.UserId)
-                    | [] -> 
-                        None
-                | DisclosingBids(bids, _, Blind) ->
-                    match bids with
-                    | highestBid :: _ ->
-                        Some(highestBid.BidAmount, highestBid.Bidder.UserId)
-                    | [] -> 
-                        None
+                | DisclosingBids(bids, _, options) ->
+                    getWinnerForBids bids options
                         
             member _.HasEnded (state: SingleSealedBidState) =
                 match state with

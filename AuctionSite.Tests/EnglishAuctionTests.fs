@@ -6,70 +6,46 @@ open FsUnit
 open AuctionSite.Domain
 open AuctionSite.Money
 open AuctionSite.Tests.SampleData
+open AuctionSite.Tests.AuctionTestHelpers
 
 [<TestFixture>]
 type EnglishAuctionTests() =
-    let timedAscAuction = sampleAuctionOfType (TimedAscending (TimedAscending.defaultOptions Currency.SEK))
+    let options = TimedAscending.defaultOptions Currency.SEK
+    let timedAscAuction = sampleAuctionOfType (TimedAscending options)
     let emptyAscAuctionState = Auction.emptyState timedAscAuction  |> function | Choice2Of2 s -> s | _ -> failwith "Expected TimedAscending state"
     let stateHandler = TimedAscending.stateHandler
+    
+    // Get test helpers
+    let testHelpers = timedAscendingTests timedAscAuction emptyAscAuctionState stateHandler options
+    let commonTests = testHelpers.CommonTests
 
     [<Test>]
     member _.``Can add bid to empty state``() =
-        let _, result1 = stateHandler.AddBid bid1 emptyAscAuctionState
-        match result1 with
-        | Ok () -> ()
-        | Error err -> Assert.Fail (string err)
+        commonTests.CanAddBidToEmptyState()
 
     [<Test>]
     member _.``Can add second bid``() =
-        let state1, _ = stateHandler.AddBid bid1 emptyAscAuctionState
-        let _, result2 = stateHandler.AddBid bid2 state1
-        match result2 with
-        | Ok () -> ()
-        | Error err -> Assert.Fail (string err)
+        commonTests.CanAddSecondBid()
 
     [<Test>]
     member _.``Can end auction``() =
-        let emptyEndedAscAuctionState = stateHandler.Inc sampleEndsAt emptyAscAuctionState
-        emptyEndedAscAuctionState |> should equal (HasEnded([], sampleEndsAt, TimedAscending.defaultOptions Currency.SEK))
+        testHelpers.CanEndEmptyAuction()
 
     [<Test>]
     member _.``Ended with two bids has correct state``() =
-        let state1, _ = stateHandler.AddBid bid1 emptyAscAuctionState
-        let state2, _ = stateHandler.AddBid bid2 state1
-        let stateEndedAfterTwoBids = stateHandler.Inc sampleEndsAt state2
-        
-        stateEndedAfterTwoBids |> should equal (HasEnded([bid2; bid1], sampleEndsAt, TimedAscending.defaultOptions Currency.SEK))
+        testHelpers.EndedWithTwoBidsHasCorrectState()
 
     [<Test>]
     member _.``Cannot bid after auction has ended``() =
-        let state1, _ = stateHandler.AddBid bid1 emptyAscAuctionState
-        let state2, _ = stateHandler.AddBid bid2 state1
-        let stateEndedAfterTwoBids = stateHandler.Inc sampleEndsAt state2
-        
-        let _, errAfterEnded = stateHandler.AddBid sampleBid stateEndedAfterTwoBids
-        match errAfterEnded with
-        | Ok () -> Assert.Fail "Did not expect success"
-        | Error err -> err |> should equal (AuctionHasEnded 1L)
+        commonTests.CannotPlaceBidAfterAuctionHasEnded()
 
     [<Test>]
     member _.``Can get winner and price from an auction``() =
-        let state1, _ = stateHandler.AddBid bid1 emptyAscAuctionState
-        let state2, _ = stateHandler.AddBid bid2 state1
-        let stateEndedAfterTwoBids = stateHandler.Inc sampleEndsAt state2
-        
-        let maybeAmountAndWinner = stateHandler.TryGetAmountAndWinner stateEndedAfterTwoBids
-        maybeAmountAndWinner |> should equal (Some(bidAmount2, buyer2.UserId))
+        testHelpers.CanGetWinnerAndPrice()
 
     [<Test>]
     member _.``Cannot place bid lower than highest bid``() =
-        let state1, _ = stateHandler.AddBid bid1 emptyAscAuctionState
-        let state2, _ = stateHandler.AddBid bid2 state1
-        
-        let _, maybeFail = stateHandler.AddBid bid_less_than_2 state2
-        match maybeFail with
-        | Ok () -> Assert.Fail "Did not expect ok"
-        | Error err -> err |> should equal (MustPlaceBidOverHighestBid bidAmount2)
+        testHelpers.CannotPlaceBidLowerThanHighestBid()
 
     [<Test>]
     member _.``Can parse TimedAscending options from string``() =

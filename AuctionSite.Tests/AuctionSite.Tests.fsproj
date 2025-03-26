@@ -8,6 +8,8 @@
   <ItemGroup>
     <Compile Include="SampleData.fs" />
     <Compile Include="AuctionStateTests.fs" />
+    <Compile Include="AuctionTestHelpers.fs" />
+    <Compile Include="SingleSealedBidOptionTests.fs" />
     <Compile Include="EnglishAuctionTests.fs" />
     <Compile Include="VickreyAuctionTests.fs" />
     <Compile Include="BlindAuctionTests.fs" />

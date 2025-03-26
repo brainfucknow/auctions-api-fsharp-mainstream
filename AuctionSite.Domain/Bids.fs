@@ -28,4 +28,5 @@ module Bid =
     /// Sort bids by amount in descending order
     let sortByAmountDescending bids =
         bids |> List.sortByDescending _.BidAmount.Value
+    
 
