@@ -103,7 +103,7 @@ module TimedAscending =
                         let nextExpiry' = max nextExpiry (now.Add(opt.TimeFrame))
                         let minRaiseAmount = opt.MinRaise
                         
-                        if bidAmount > highestBidAmount && bidAmount >= highestBidAmount + minRaiseAmount then
+                        if bidAmount >= highestBidAmount + minRaiseAmount then
                             // Bid is high enough
                             OnGoing(bid :: bids, nextExpiry', opt), Ok()
                         else
