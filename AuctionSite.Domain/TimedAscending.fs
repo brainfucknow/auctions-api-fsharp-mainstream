@@ -59,7 +59,7 @@ module TimedAscending =
             member _.Inc (now: DateTime) (state: TimedAscendingState) =
                 match state with
                 | AwaitingStart(start, startingExpiry, opt) ->
-                    if now > start then
+                    if now >= start then
                         if now < startingExpiry then
                             // Transition from AwaitingStart to OnGoing
                             OnGoing([], startingExpiry, opt)
