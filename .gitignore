@@ -406,3 +406,4 @@ tmp/
 .worktrees/
 .swarmforge/
 .metrics/
+!/swarmforge/bin/
